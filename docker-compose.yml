@@ -5,11 +5,11 @@ services:
   # ---------------------------------------------------------------------------
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
-    container_name: jasmin-rabbitmq
     restart: unless-stopped
+    # 5672 is accessed internally by Jasmin via the 'jasmin' network.
+    # Exposing only the web management UI on 15672:
     ports:
-      - "5672:5672"      # AMQP
-      - "15672:15672"    # Management UI (http://localhost:15672)
+      - "15672:15672"    # Management UI (http://<server-ip>:15672)
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
     healthcheck:
@@ -25,11 +25,9 @@ services:
   # ---------------------------------------------------------------------------
   redis:
     image: redis:7-alpine
-    container_name: jasmin-redis
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes"]
-    ports:
-      - "6379:6379"
+    # Redis does not need host port 6379 exposed; Jasmin connects internally.
     volumes:
       - redis_data:/data
     healthcheck:
@@ -50,7 +48,6 @@ services:
   # ---------------------------------------------------------------------------
   jasmin:
     image: jookies/jasmin:latest
-    container_name: jasmin-sms
     restart: unless-stopped
     depends_on:
       rabbitmq:
