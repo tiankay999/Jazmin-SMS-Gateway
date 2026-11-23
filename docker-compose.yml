@@ -1,0 +1,88 @@
+services:
+  # ---------------------------------------------------------------------------
+  # RabbitMQ — message broker Jasmin uses internally (AMQP)
+  # Management UI on :15672 (user: guest, pass: guest — change in production)
+  # ---------------------------------------------------------------------------
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: jasmin-rabbitmq
+    restart: unless-stopped
+    ports:
+      - "5672:5672"      # AMQP
+      - "15672:15672"    # Management UI (http://localhost:15672)
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - jasmin
+
+  # ---------------------------------------------------------------------------
+  # Redis — used by Jasmin for routing-table cache and message state
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: jasmin-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - jasmin
+
+  # ---------------------------------------------------------------------------
+  # Jasmin SMS Gateway
+  #
+  # Ports:
+  #   1401  → HTTP API (send SMS, check balance, delivery reports)
+  #   2775  → SMPP server (your apps/clients can connect as SMPP)
+  #   8990  → jCli management console (telnet)
+  # ---------------------------------------------------------------------------
+  jasmin:
+    image: jookies/jasmin:latest
+    container_name: jasmin-sms
+    restart: unless-stopped
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      # Point Jasmin at the broker + cache
+      AMQP_HOST: rabbitmq
+      AMQP_PORT: 5672
+      REDIS_CLIENT_HOST: redis
+      REDIS_CLIENT_PORT: 6379
+      # Logging
+      ENABLE_PUBLISH_SUBMIT_SM_RESP: "1"
+    ports:
+      - "1401:1401"      # HTTP API
+      - "2775:2775"      # SMPP server (for inbound SMPP clients)
+      - "8990:8990"      # jCli management (telnet)
+    volumes:
+      - jasmin_config:/etc/jasmin
+      - jasmin_store:/etc/jasmin/store
+      - jasmin_logs:/var/log/jasmin
+    networks:
+      - jasmin
+
+volumes:
+  rabbitmq_data:
+  redis_data:
+  jasmin_config:
+  jasmin_store:
+  jasmin_logs:
+
+networks:
+  jasmin:
+    driver: bridge
